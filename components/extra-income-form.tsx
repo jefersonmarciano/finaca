@@ -50,7 +50,12 @@ export function ExtraIncomeForm({ extraIncome, month, year, onUpdate }: ExtraInc
     }
   }
 
-  const handleDelete = async (id: string) => {
+  // Modifique a função handleDelete para prevenir o comportamento padrão do evento
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    // Prevenir comportamento padrão do evento
+    e.preventDefault()
+    e.stopPropagation()
+
     try {
       await deleteExtraIncome(id)
       onUpdate()
@@ -141,7 +146,7 @@ export function ExtraIncomeForm({ extraIncome, month, year, onUpdate }: ExtraInc
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => handleDelete(extra.id)}
+                      onClick={(e) => handleDelete(e, extra.id)}
                       className="text-red-600 hover:text-red-700"
                     >
                       <Trash2 className="h-4 w-4" />

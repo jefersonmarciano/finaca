@@ -28,3 +28,31 @@ export interface ExtraIncome {
   year: number
   created_at?: string
 }
+
+export interface MonthlySummary {
+  id: string
+  month: number
+  year: number
+  total_receitas: number
+  total_gastos: number
+  total_extras: number
+  das_value: number
+  saldo_mensal: number
+  ir_mensal: number
+  created_at?: string
+}
+
+export interface MonthlySavings {
+  id: string
+  month: number
+  year: number
+  amount: number
+  description: string
+  created_at?: string
+}
+
+export interface TotalSavings {
+  total_accumulated: number
+  months_count: number
+  last_update: string
+}

@@ -58,7 +58,12 @@ export function TransactionForm({ transactions, onUpdate }: TransactionFormProps
     }
   }
 
-  const handleDelete = async (id: string) => {
+  // Modifique a função handleDelete para prevenir o comportamento padrão do evento
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    // Prevenir comportamento padrão do evento
+    e.preventDefault()
+    e.stopPropagation()
+
     try {
       await deleteTransaction(id)
       onUpdate()
@@ -180,7 +185,7 @@ export function TransactionForm({ transactions, onUpdate }: TransactionFormProps
                     {transaction.type === "receita" ? "+" : "-"}R${" "}
                     {transaction.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                   </span>
-                  <Button variant="outline" size="sm" onClick={() => handleDelete(transaction.id)}>
+                  <Button variant="outline" size="sm" onClick={(e) => handleDelete(e, transaction.id)}>
                     Remover
                   </Button>
                 </div>

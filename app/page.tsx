@@ -9,6 +9,9 @@ import { FinancialSummary } from "@/components/financial-summary"
 import { ExtraIncomeForm } from "@/components/extra-income-form"
 import { TransactionForm } from "@/components/transaction-form"
 import { AlertsPanel } from "@/components/alerts-panel"
+import { MonthHistory } from "@/components/month-history"
+import { MonthSelector } from "@/components/month-selector"
+import { SavingsTracker } from "@/components/savings-tracker"
 import {
   getTransactions,
   getMonthlySettings,
@@ -85,7 +88,10 @@ export default function FinancialControl() {
     loadData()
   }, [currentMonth, currentYear])
 
-  const monthName = new Date(currentYear, currentMonth - 1).toLocaleString("pt-BR", { month: "long" })
+  const handleMonthChange = (month: number, year: number) => {
+    setCurrentMonth(month)
+    setCurrentYear(year)
+  }
 
   if (isLoading) {
     return (
@@ -131,11 +137,9 @@ export default function FinancialControl() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
-        <div className="text-center space-y-2">
+        <div className="text-center space-y-4">
           <h1 className="text-4xl font-bold text-gray-900">Controle Financeiro MEI</h1>
-          <p className="text-gray-600">
-            {monthName} de {currentYear}
-          </p>
+          <MonthSelector currentMonth={currentMonth} currentYear={currentYear} onChange={handleMonthChange} />
         </div>
 
         {/* Resumo Financeiro */}
@@ -148,6 +152,9 @@ export default function FinancialControl() {
         {/* Valores Extras */}
         <ExtraIncomeForm extraIncome={extraIncome} month={currentMonth} year={currentYear} onUpdate={loadData} />
 
+        {/* Histórico Mensal */}
+        <MonthHistory currentMonth={currentMonth} currentYear={currentYear} onUpdate={loadData} />
+
         {/* Alertas e Projeções */}
         <AlertsPanel
           transactions={transactions}
@@ -158,9 +165,10 @@ export default function FinancialControl() {
 
         {/* Tabs principais */}
         <Tabs defaultValue="dashboard" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="transactions">Transações</TabsTrigger>
+            <TabsTrigger value="savings">Reservas</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-4">
@@ -238,6 +246,10 @@ export default function FinancialControl() {
 
           <TabsContent value="transactions" className="space-y-4">
             <TransactionForm transactions={transactions} onUpdate={loadData} />
+          </TabsContent>
+
+          <TabsContent value="savings" className="space-y-4">
+            <SavingsTracker currentMonth={currentMonth} currentYear={currentYear} onUpdate={loadData} />
           </TabsContent>
         </Tabs>
       </div>
