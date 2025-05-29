@@ -69,6 +69,25 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
     due_day: "",
   })
 
+  // Adicionar após os estados existentes
+  const [cardExpenses, setCardExpenses] = useState<
+    Array<{
+      description: string
+      amount: string
+      installments: string
+      date: string
+      category: string
+    }>
+  >([])
+
+  const [newExpense, setNewExpense] = useState({
+    description: "",
+    amount: "",
+    installments: "1",
+    date: "",
+    category: "",
+  })
+
   const loadCardData = async () => {
     try {
       setIsLoading(true)
@@ -103,23 +122,72 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
     }
   }
 
+  // Adicionar após loadCardData
+  const addExpenseToList = () => {
+    if (!newExpense.description || !newExpense.amount || !newExpense.date) {
+      alert("Preencha pelo menos descrição, valor e data")
+      return
+    }
+
+    setCardExpenses([...cardExpenses, { ...newExpense }])
+    setNewExpense({
+      description: "",
+      amount: "",
+      installments: "1",
+      date: "",
+      category: "",
+    })
+  }
+
+  const removeExpenseFromList = (index: number) => {
+    setCardExpenses(cardExpenses.filter((_, i) => i !== index))
+  }
+
+  const getCardTransactionsByCard = (cardId: string) => {
+    return cardTransactions.filter((t) => t.card_id === cardId)
+  }
+
+  const getCardInstallmentsByCard = (cardId: string) => {
+    return cardInstallments.filter((i) => i.transaction?.card_id === cardId)
+  }
+
   useEffect(() => {
     loadCardData()
   }, [currentMonth, currentYear])
 
   const handleAddCard = async () => {
-    if (!newCard.name || !newCard.credit_limit || !newCard.closing_day || !newCard.due_day) return
+    if (!newCard.name || !newCard.credit_limit || !newCard.closing_day || !newCard.due_day) {
+      alert("Preencha todos os campos do cartão")
+      return
+    }
 
     try {
-      await addCreditCard({
+      // Adicionar cartão
+      const addedCard = await addCreditCard({
         name: newCard.name,
         credit_limit: Number.parseFloat(newCard.credit_limit),
         closing_day: Number.parseInt(newCard.closing_day),
         due_day: Number.parseInt(newCard.due_day),
       })
 
+      // Adicionar gastos se houver
+      for (const expense of cardExpenses) {
+        await addCardTransaction({
+          card_id: addedCard.id,
+          description: expense.description,
+          amount: Number.parseFloat(expense.amount),
+          installments: Number.parseInt(expense.installments),
+          current_installment: 1,
+          date: expense.date,
+          category: expense.category || "Geral",
+        })
+      }
+
+      // Limpar formulários
       setNewCard({ name: "", credit_limit: "", closing_day: "", due_day: "" })
+      setCardExpenses([])
       setShowNewCardForm(false)
+
       await loadCardData()
       if (onUpdate) onUpdate()
     } catch (error) {
@@ -136,6 +204,31 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
       closing_day: card.closing_day.toString(),
       due_day: card.due_day.toString(),
     })
+
+    // Carregar gastos existentes do cartão
+    const existingTransactions = cardTransactions.filter((t) => t.card_id === card.id)
+    const existingExpenses = existingTransactions.map((t) => ({
+      description: t.description,
+      amount: t.amount.toString(),
+      installments: t.installments.toString(),
+      date: t.date,
+      category: t.category,
+    }))
+    setCardExpenses(existingExpenses)
+  }
+
+  const refreshCardData = async () => {
+    try {
+      const [summaryData, transactionsData] = await Promise.all([
+        getCardsSummary(),
+        getCardTransactions(currentMonth, currentYear),
+      ])
+
+      setCardsSummary(summaryData)
+      setCardTransactions(transactionsData)
+    } catch (error) {
+      console.error("Erro ao atualizar dados dos cartões:", error)
+    }
   }
 
   const handleSaveEditCard = async (cardId: string) => {
@@ -149,8 +242,28 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
         due_day: Number.parseInt(editingCardData.due_day),
       })
 
+      // Remover transações antigas do cartão
+      const existingTransactions = cardTransactions.filter((t) => t.card_id === cardId)
+      for (const transaction of existingTransactions) {
+        await deleteCardTransaction(transaction.id)
+      }
+
+      // Adicionar novas transações
+      for (const expense of cardExpenses) {
+        await addCardTransaction({
+          card_id: cardId,
+          description: expense.description,
+          amount: Number.parseFloat(expense.amount),
+          installments: Number.parseInt(expense.installments),
+          current_installment: 1,
+          date: expense.date,
+          category: expense.category || "Geral",
+        })
+      }
+
       setEditingCard(null)
-      await loadCardData()
+      setCardExpenses([])
+      await refreshCardData() // Usar refreshCardData em vez de loadCardData para atualização mais rápida
       if (onUpdate) onUpdate()
     } catch (error) {
       console.error("Erro ao atualizar cartão:", error)
@@ -198,7 +311,7 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
         category: "",
       })
       setShowNewTransactionForm(false)
-      await loadCardData()
+      await refreshCardData() // Usar refreshCardData em vez de loadCardData para atualização mais rápida
       if (onUpdate) onUpdate()
     } catch (error) {
       console.error("Erro ao adicionar transação:", error)
@@ -239,6 +352,90 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
 
   const getMonthName = (month: number) => {
     return new Date(2000, month - 1).toLocaleString("pt-BR", { month: "long" })
+  }
+
+  const getCardBrandInfo = (cardName: string) => {
+    const name = cardName.toLowerCase()
+
+    if (name.includes("nubank") || name.includes("nu")) {
+      return {
+        colors: "border-purple-400 bg-gradient-to-br from-purple-50 to-purple-100",
+        textColor: "text-purple-800",
+        accentColor: "text-purple-600",
+        logo: "💜", // Nubank purple heart
+      }
+    }
+
+    if (name.includes("bradesco")) {
+      return {
+        colors: "border-red-400 bg-gradient-to-br from-red-50 to-red-100",
+        textColor: "text-red-800",
+        accentColor: "text-red-600",
+        logo: "🔴", // Bradesco red
+      }
+    }
+
+    if (name.includes("itau") || name.includes("itaú")) {
+      return {
+        colors: "border-orange-400 bg-gradient-to-br from-orange-50 to-orange-100",
+        textColor: "text-orange-800",
+        accentColor: "text-orange-600",
+        logo: "🧡", // Itaú orange
+      }
+    }
+
+    if (name.includes("santander")) {
+      return {
+        colors: "border-red-300 bg-gradient-to-br from-red-50 to-pink-50",
+        textColor: "text-red-700",
+        accentColor: "text-red-500",
+        logo: "❤️", // Santander light red
+      }
+    }
+
+    if (name.includes("c6") || name.includes("c6 bank")) {
+      return {
+        colors: "border-gray-400 bg-gradient-to-br from-gray-50 to-gray-100",
+        textColor: "text-gray-800",
+        accentColor: "text-gray-600",
+        logo: "⚫", // C6 Bank gray/black
+      }
+    }
+
+    if (name.includes("inter")) {
+      return {
+        colors: "border-orange-400 bg-gradient-to-br from-orange-50 to-yellow-50",
+        textColor: "text-orange-800",
+        accentColor: "text-orange-600",
+        logo: "🟠", // Inter orange
+      }
+    }
+
+    if (name.includes("caixa")) {
+      return {
+        colors: "border-blue-400 bg-gradient-to-br from-blue-50 to-blue-100",
+        textColor: "text-blue-800",
+        accentColor: "text-blue-600",
+        logo: "🔵", // Caixa blue
+      }
+    }
+
+    if (name.includes("bb") || name.includes("banco do brasil")) {
+      return {
+        colors: "border-yellow-400 bg-gradient-to-br from-yellow-50 to-yellow-100",
+        textColor: "text-yellow-800",
+        accentColor: "text-yellow-600",
+        logo: "🟡", // Banco do Brasil yellow
+      }
+    }
+
+    // Default for unknown cards
+    return {
+      colors: "border-blue-300 bg-gradient-to-br from-blue-50 to-indigo-50",
+      textColor: "text-blue-800",
+      accentColor: "text-blue-600",
+      logo: "💳", // Generic card
+    }
   }
 
   if (!tablesExist) {
@@ -286,17 +483,21 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
       {/* Resumo dos Cartões */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {cardsSummary.map((summary) => {
-          const usagePercentage = (summary.current_balance / summary.card.credit_limit) * 100
+          const actualUsed = getCardTransactionsByCard(summary.card.id).reduce((sum, t) => sum + t.amount, 0)
+          const usagePercentage = (actualUsed / summary.card.credit_limit) * 100
           const isHighUsage = usagePercentage > 80
+          const brandInfo = getCardBrandInfo(summary.card.name)
 
           return (
             <Card
               key={summary.card.id}
-              className={`${isHighUsage ? "border-red-300 bg-red-50" : "border-blue-300 bg-blue-50"}`}
+              className={`${isHighUsage ? "border-red-400 bg-gradient-to-br from-red-50 to-red-100" : brandInfo.colors} transition-all duration-200 hover:shadow-md`}
             >
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-medium flex items-center gap-2">
-                  <CreditCardIcon className="h-4 w-4" />
+                <CardTitle
+                  className={`text-sm font-medium flex items-center gap-2 ${isHighUsage ? "text-red-800" : brandInfo.textColor}`}
+                >
+                  <span className="text-lg">{brandInfo.logo}</span>
                   {summary.card.name}
                 </CardTitle>
               </CardHeader>
@@ -304,14 +505,22 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
                 <div className="space-y-2">
                   <div className="flex justify-between text-sm">
                     <span>Usado:</span>
-                    <span className="font-medium">R$ {formatCurrency(summary.current_balance)}</span>
+                    <span className={`font-medium ${isHighUsage ? "text-red-700" : brandInfo.accentColor}`}>
+                      R${" "}
+                      {formatCurrency(getCardTransactionsByCard(summary.card.id).reduce((sum, t) => sum + t.amount, 0))}
+                    </span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span>Limite:</span>
-                    <span>R$ {formatCurrency(summary.card.credit_limit)}</span>
+                    <span className={isHighUsage ? "text-red-600" : brandInfo.accentColor}>
+                      R$ {formatCurrency(summary.card.credit_limit)}
+                    </span>
                   </div>
                   <Progress value={usagePercentage} className="h-2" />
-                  <div className="text-xs text-gray-600 text-center">{usagePercentage.toFixed(1)}% utilizado</div>
+                  <div className="flex justify-between text-xs text-gray-600">
+                    <span>{usagePercentage.toFixed(1)}% utilizado</span>
+                    <span>R$ {formatCurrency(summary.card.credit_limit - actualUsed)} disponível</span>
+                  </div>
                 </div>
 
                 {summary.next_due_date && (
@@ -323,6 +532,16 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
                     <div className="text-sm text-red-600">R$ {formatCurrency(summary.next_due_amount)}</div>
                   </div>
                 )}
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`w-full mt-1 text-xs hover:${brandInfo.colors.split(" ")[1]} ${isHighUsage ? "text-red-700 hover:text-red-800" : brandInfo.accentColor}`}
+                  onClick={() => handleEditCard(summary.card)}
+                >
+                  <Edit className="h-3 w-3 mr-1" />
+                  Editar gastos
+                </Button>
               </CardContent>
             </Card>
           )
@@ -396,9 +615,112 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
                 />
               </div>
             </div>
+            {/* Seção de gastos */}
+            <div className="border-t pt-4">
+              <h4 className="font-medium mb-4">Gastos Já Realizados (Opcional)</h4>
+
+              {/* Formulário para adicionar gasto */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                <div>
+                  <Label>Descrição</Label>
+                  <Input
+                    placeholder="Ex: Compra no supermercado"
+                    value={newExpense.description}
+                    onChange={(e) => setNewExpense((prev) => ({ ...prev, description: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>Valor (R$)</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="0,00"
+                    value={newExpense.amount}
+                    onChange={(e) => setNewExpense((prev) => ({ ...prev, amount: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>Parcelas</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="24"
+                    placeholder="1"
+                    value={newExpense.installments}
+                    onChange={(e) => setNewExpense((prev) => ({ ...prev, installments: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>Data</Label>
+                  <Input
+                    type="date"
+                    value={newExpense.date}
+                    onChange={(e) => setNewExpense((prev) => ({ ...prev, date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <Label>Categoria</Label>
+                  <Input
+                    placeholder="Ex: Alimentação"
+                    value={newExpense.category}
+                    onChange={(e) => setNewExpense((prev) => ({ ...prev, category: e.target.value }))}
+                  />
+                </div>
+                <div className="flex items-end">
+                  <Button type="button" onClick={addExpenseToList} className="w-full">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Adicionar
+                  </Button>
+                </div>
+              </div>
+
+              {/* Lista de gastos adicionados */}
+              {cardExpenses.length > 0 && (
+                <div className="space-y-2">
+                  <h5 className="font-medium text-sm">Gastos Adicionados:</h5>
+                  {cardExpenses.map((expense, index) => (
+                    <div key={index} className="flex justify-between items-center p-2 bg-white rounded border">
+                      <div className="flex-1">
+                        <p className="font-medium">{expense.description}</p>
+                        <p className="text-sm text-gray-600">
+                          R$ {Number.parseFloat(expense.amount).toFixed(2)}
+                          {Number.parseInt(expense.installments) > 1 && ` em ${expense.installments}x`}
+                          {expense.category && ` • ${expense.category}`}
+                        </p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => removeExpenseFromList(index)}
+                        className="text-red-600"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                  <div className="text-sm text-gray-600">
+                    Total: R${" "}
+                    {cardExpenses.reduce((sum, exp) => sum + Number.parseFloat(exp.amount || "0"), 0).toFixed(2)}
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="flex gap-2">
               <Button onClick={handleAddCard}>Salvar Cartão</Button>
-              <Button variant="outline" onClick={() => setShowNewCardForm(false)}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowNewCardForm(false)
+                  setCardExpenses([])
+                  setNewExpense({
+                    description: "",
+                    amount: "",
+                    installments: "1",
+                    date: "",
+                    category: "",
+                  })
+                }}
+              >
                 Cancelar
               </Button>
             </div>
@@ -410,7 +732,7 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
       <Tabs defaultValue="cards" className="w-full">
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="cards">Cartões</TabsTrigger>
-          <TabsTrigger value="transactions">Transações</TabsTrigger>
+          <TabsTrigger value="expenses">Gastos</TabsTrigger>
           <TabsTrigger value="installments">Parcelas</TabsTrigger>
           <TabsTrigger value="summary">Resumo</TabsTrigger>
         </TabsList>
@@ -434,7 +756,7 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
                     <div key={card.id} className="flex justify-between items-center p-3 border rounded-lg">
                       <div className="flex-1">
                         {editingCard === card.id ? (
-                          <div className="space-y-2">
+                          <div className="space-y-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                               <Input
                                 placeholder="Nome do cartão"
@@ -464,12 +786,127 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
                                 onChange={(e) => setEditingCardData((prev) => ({ ...prev, due_day: e.target.value }))}
                               />
                             </div>
+
+                            {/* Seção de gastos do cartão */}
+                            <div className="border-t pt-4">
+                              <h5 className="font-medium mb-3">Gastos do Cartão</h5>
+
+                              {/* Formulário para adicionar gasto */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
+                                <div>
+                                  <Label className="text-xs">Descrição</Label>
+                                  <Input
+                                    placeholder="Ex: Compra no supermercado"
+                                    value={newExpense.description}
+                                    onChange={(e) =>
+                                      setNewExpense((prev) => ({ ...prev, description: e.target.value }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Valor (R$)</Label>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="0,00"
+                                    value={newExpense.amount}
+                                    onChange={(e) => setNewExpense((prev) => ({ ...prev, amount: e.target.value }))}
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Parcelas</Label>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    max="24"
+                                    placeholder="1"
+                                    value={newExpense.installments}
+                                    onChange={(e) =>
+                                      setNewExpense((prev) => ({ ...prev, installments: e.target.value }))
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Data</Label>
+                                  <Input
+                                    type="date"
+                                    value={newExpense.date}
+                                    onChange={(e) => setNewExpense((prev) => ({ ...prev, date: e.target.value }))}
+                                  />
+                                </div>
+                                <div>
+                                  <Label className="text-xs">Categoria</Label>
+                                  <Input
+                                    placeholder="Ex: Alimentação"
+                                    value={newExpense.category}
+                                    onChange={(e) => setNewExpense((prev) => ({ ...prev, category: e.target.value }))}
+                                  />
+                                </div>
+                                <div className="flex items-end">
+                                  <Button type="button" onClick={addExpenseToList} size="sm" className="w-full">
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Adicionar
+                                  </Button>
+                                </div>
+                              </div>
+
+                              {/* Lista de gastos */}
+                              {cardExpenses.length > 0 && (
+                                <div className="space-y-2">
+                                  <h6 className="font-medium text-xs">Gastos Atuais:</h6>
+                                  {cardExpenses.map((expense, index) => (
+                                    <div
+                                      key={index}
+                                      className="flex justify-between items-center p-2 bg-gray-50 rounded text-sm"
+                                    >
+                                      <div className="flex-1">
+                                        <p className="font-medium">{expense.description}</p>
+                                        <p className="text-xs text-gray-600">
+                                          R$ {Number.parseFloat(expense.amount).toFixed(2)}
+                                          {Number.parseInt(expense.installments) > 1 && ` em ${expense.installments}x`}
+                                          {expense.category && ` • ${expense.category}`}
+                                        </p>
+                                      </div>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => removeExpenseFromList(index)}
+                                        className="text-red-600 h-6 w-6 p-0"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    </div>
+                                  ))}
+                                  <div className="text-xs text-gray-600 text-right">
+                                    Total: R${" "}
+                                    {cardExpenses
+                                      .reduce((sum, exp) => sum + Number.parseFloat(exp.amount || "0"), 0)
+                                      .toFixed(2)}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
                             <div className="flex gap-2">
                               <Button size="sm" onClick={() => handleSaveEditCard(card.id)}>
                                 <Check className="h-3 w-3 mr-1" />
                                 Salvar
                               </Button>
-                              <Button size="sm" variant="outline" onClick={() => setEditingCard(null)}>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingCard(null)
+                                  setCardExpenses([])
+                                  setNewExpense({
+                                    description: "",
+                                    amount: "",
+                                    installments: "1",
+                                    date: "",
+                                    category: "",
+                                  })
+                                }}
+                              >
                                 <X className="h-3 w-3 mr-1" />
                                 Cancelar
                               </Button>
@@ -503,6 +940,61 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
                       )}
                     </div>
                   ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="expenses" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Gastos por Cartão</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {cards.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p>Nenhum cartão cadastrado ainda.</p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {cards.map((card) => {
+                    const cardTransactionsForCard = getCardTransactionsByCard(card.id)
+                    return (
+                      <div key={card.id} className="border rounded-lg p-4">
+                        <h4 className="font-medium mb-3 flex items-center gap-2">
+                          <CreditCardIcon className="h-4 w-4" />
+                          {card.name}
+                        </h4>
+                        {cardTransactionsForCard.length === 0 ? (
+                          <p className="text-gray-500 text-sm">Nenhum gasto registrado neste cartão.</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {cardTransactionsForCard.map((transaction) => (
+                              <div
+                                key={transaction.id}
+                                className="flex justify-between items-center p-2 bg-gray-50 rounded"
+                              >
+                                <div className="flex-1">
+                                  <p className="font-medium text-sm">{transaction.description}</p>
+                                  <p className="text-xs text-gray-600">
+                                    {transaction.category} | {new Date(transaction.date).toLocaleDateString("pt-BR")}
+                                    {transaction.installments > 1 && ` | ${transaction.installments}x`}
+                                  </p>
+                                </div>
+                                <span className="font-bold text-red-600 text-sm">
+                                  R$ {formatCurrency(transaction.amount)}
+                                </span>
+                              </div>
+                            ))}
+                            <div className="text-right text-sm font-medium pt-2 border-t">
+                              Total: R$ {formatCurrency(cardTransactionsForCard.reduce((sum, t) => sum + t.amount, 0))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </CardContent>

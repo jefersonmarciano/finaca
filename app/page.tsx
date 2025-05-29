@@ -19,6 +19,7 @@ import {
   getExtraIncome,
   upsertMonthlySettings,
   checkTablesExist,
+  getCardTransactions,
 } from "@/lib/database"
 import type { Transaction, MonthlySettings, ExtraIncome } from "@/types/financial"
 
@@ -31,6 +32,7 @@ export default function FinancialControl() {
   const [isLoading, setIsLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
+  const [cardTransactions, setCardTransactions] = useState<any[]>([])
 
   const loadData = async () => {
     try {
@@ -76,6 +78,10 @@ export default function FinancialControl() {
         }
       }
       setMonthlySettings(settingsData)
+
+      // Add this line inside the loadData function after loading other data
+      const cardTransactionsData = await getCardTransactions(currentMonth, currentYear)
+      setCardTransactions(cardTransactionsData)
     } catch (error) {
       console.error("Erro ao carregar dados:", error)
       setHasError(true)
@@ -208,27 +214,46 @@ export default function FinancialControl() {
               <div className="bg-white rounded-lg p-6 shadow-sm border">
                 <h3 className="text-lg font-semibold text-red-700 mb-4">Gastos do Mês</h3>
                 <div className="space-y-3">
-                  {transactions.filter((t) => t.type === "gasto").length === 0 ? (
-                    <p className="text-gray-500 text-center py-4">Nenhum gasto registrado ainda</p>
-                  ) : (
-                    transactions
-                      .filter((t) => t.type === "gasto")
-                      .map((transaction) => (
-                        <div
-                          key={transaction.id}
-                          className="flex justify-between items-center p-3 bg-red-50 rounded-lg"
-                        >
-                          <div>
-                            <p className="font-medium">{transaction.category}</p>
-                            <p className="text-sm text-gray-600">
-                              {new Date(transaction.date).toLocaleDateString("pt-BR")}
-                            </p>
-                          </div>
-                          <span className="font-bold text-red-700">
-                            R$ {transaction.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                          </span>
+                  {/* Gastos regulares */}
+                  {transactions
+                    .filter((t) => t.type === "gasto")
+                    .map((transaction) => (
+                      <div key={transaction.id} className="flex justify-between items-center p-3 bg-red-50 rounded-lg">
+                        <div>
+                          <p className="font-medium">{transaction.category}</p>
+                          <p className="text-sm text-gray-600">
+                            {new Date(transaction.date).toLocaleDateString("pt-BR")}
+                          </p>
                         </div>
-                      ))
+                        <span className="font-bold text-red-700">
+                          R$ {transaction.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    ))}
+
+                  {/* Gastos dos cartões */}
+                  {cardTransactions.map((transaction) => (
+                    <div
+                      key={`card-${transaction.id}`}
+                      className="flex justify-between items-center p-3 bg-orange-50 rounded-lg border-l-4 border-orange-400"
+                    >
+                      <div>
+                        <p className="font-medium">{transaction.description}</p>
+                        <p className="text-sm text-gray-600">
+                          {transaction.card?.name} • {new Date(transaction.date).toLocaleDateString("pt-BR")}
+                          {transaction.installments > 1 && ` • ${transaction.installments}x`}
+                        </p>
+                        <p className="text-xs text-orange-600">{transaction.category}</p>
+                      </div>
+                      <span className="font-bold text-orange-700">
+                        R$ {transaction.amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  ))}
+
+                  {/* Mostrar mensagem se não houver gastos */}
+                  {transactions.filter((t) => t.type === "gasto").length === 0 && cardTransactions.length === 0 && (
+                    <p className="text-gray-500 text-center py-4">Nenhum gasto registrado ainda</p>
                   )}
 
                   {/* DAS MEI */}
