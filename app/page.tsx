@@ -20,6 +20,7 @@ import {
   upsertMonthlySettings,
   checkTablesExist,
   getCardTransactions,
+  checkCardTablesExist,
 } from "@/lib/database"
 import type { Transaction, MonthlySettings, ExtraIncome } from "@/types/financial"
 
@@ -59,7 +60,6 @@ export default function FinancialControl() {
       // Carregar configurações mensais
       let settingsData = await getMonthlySettings(currentMonth, currentYear)
       if (!settingsData) {
-        // Criar configuração padrão se não existir
         try {
           settingsData = await upsertMonthlySettings({
             month: currentMonth,
@@ -68,7 +68,6 @@ export default function FinancialControl() {
           })
         } catch (error) {
           console.error("Erro ao criar configurações:", error)
-          // Usar configuração padrão local se não conseguir salvar
           settingsData = {
             id: "temp",
             month: currentMonth,
@@ -79,9 +78,25 @@ export default function FinancialControl() {
       }
       setMonthlySettings(settingsData)
 
-      // Add this line inside the loadData function after loading other data
-      const cardTransactionsData = await getCardTransactions(currentMonth, currentYear)
-      setCardTransactions(cardTransactionsData)
+      // Carregar transações de cartão com mais debug
+      try {
+        console.log("🔍 Verificando se tabelas de cartão existem...")
+        const cardTablesExist = await checkCardTablesExist()
+        console.log("📊 Tabelas de cartão existem:", cardTablesExist)
+
+        if (cardTablesExist) {
+          console.log("📅 Carregando transações de cartão para:", currentMonth, currentYear)
+          const cardTransactionsData = await getCardTransactions(currentMonth, currentYear)
+          console.log("💳 Transações de cartão encontradas:", cardTransactionsData.length, cardTransactionsData)
+          setCardTransactions(cardTransactionsData)
+        } else {
+          console.log("⚠️ Tabelas de cartão não existem - definindo array vazio")
+          setCardTransactions([])
+        }
+      } catch (error) {
+        console.error("❌ Erro ao carregar transações de cartão:", error)
+        setCardTransactions([])
+      }
     } catch (error) {
       console.error("Erro ao carregar dados:", error)
       setHasError(true)
@@ -256,6 +271,27 @@ export default function FinancialControl() {
                     <p className="text-gray-500 text-center py-4">Nenhum gasto registrado ainda</p>
                   )}
 
+                  {/* Adicionar debug info mais detalhado */}
+                  {cardTransactions.length === 0 && (
+                    <div className="text-xs text-gray-400 text-center p-2 bg-gray-50 rounded">
+                      <p>Debug: {cardTransactions.length} transações de cartão encontradas</p>
+                      <p>
+                        Mês/Ano: {currentMonth}/{currentYear}
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          console.log("🔄 Recarregando dados manualmente...")
+                          loadData()
+                        }}
+                        className="mt-2"
+                      >
+                        Recarregar Dados
+                      </Button>
+                    </div>
+                  )}
+
                   {/* DAS MEI */}
                   <div className="flex justify-between items-center p-3 bg-purple-50 rounded-lg border-2 border-purple-200">
                     <div>
@@ -280,7 +316,14 @@ export default function FinancialControl() {
           </TabsContent>
 
           <TabsContent value="cards" className="space-y-4">
-            <CreditCardManager currentMonth={currentMonth} currentYear={currentYear} onUpdate={loadData} />
+            <CreditCardManager
+              currentMonth={currentMonth}
+              currentYear={currentYear}
+              onUpdate={() => {
+                console.log("Atualizando dados após mudança no cartão")
+                loadData()
+              }}
+            />
           </TabsContent>
         </Tabs>
       </div>

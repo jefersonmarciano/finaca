@@ -188,8 +188,12 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
       setCardExpenses([])
       setShowNewCardForm(false)
 
+      // Após adicionar todos os gastos, chame onUpdate
       await loadCardData()
-      if (onUpdate) onUpdate()
+      if (onUpdate) {
+        console.log("Chamando onUpdate após adicionar cartão com gastos")
+        onUpdate()
+      }
     } catch (error) {
       console.error("Erro ao adicionar cartão:", error)
       alert("Erro ao adicionar cartão.")
@@ -289,10 +293,24 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
   }
 
   const handleAddTransaction = async () => {
-    if (!newTransaction.card_id || !newTransaction.description || !newTransaction.amount || !newTransaction.date) return
+    // Verificar se as tabelas existem
+    const tablesExist = await checkCardTablesExist()
+    if (!tablesExist) {
+      alert("As tabelas de cartão não foram criadas ainda. Execute o script SQL para cartões.")
+      return
+    }
+
+    if (!newTransaction.card_id || !newTransaction.description || !newTransaction.amount || !newTransaction.date) {
+      alert("Preencha todos os campos obrigatórios")
+      return
+    }
 
     try {
-      await addCardTransaction({
+      console.log("💳 Adicionando transação de cartão:", newTransaction)
+      console.log("📅 Data da transação:", newTransaction.date)
+      console.log("📊 Mês/Ano atual:", currentMonth, currentYear)
+
+      const addedTransaction = await addCardTransaction({
         card_id: newTransaction.card_id,
         description: newTransaction.description,
         amount: Number.parseFloat(newTransaction.amount),
@@ -301,6 +319,20 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
         date: newTransaction.date,
         category: newTransaction.category || "Geral",
       })
+
+      console.log("✅ Transação adicionada com sucesso:", addedTransaction)
+
+      // Verificar se a data está no mês correto
+      const transactionDate = new Date(newTransaction.date)
+      const transactionMonth = transactionDate.getMonth() + 1
+      const transactionYear = transactionDate.getFullYear()
+
+      console.log("📅 Mês/Ano da transação:", transactionMonth, transactionYear)
+      console.log("📅 Mês/Ano atual:", currentMonth, currentYear)
+
+      if (transactionMonth !== currentMonth || transactionYear !== currentYear) {
+        console.log("⚠️ ATENÇÃO: Transação foi salva em mês/ano diferente do atual!")
+      }
 
       setNewTransaction({
         card_id: "",
@@ -311,11 +343,17 @@ export function CreditCardManager({ currentMonth, currentYear, onUpdate }: Credi
         category: "",
       })
       setShowNewTransactionForm(false)
-      await refreshCardData() // Usar refreshCardData em vez de loadCardData para atualização mais rápida
-      if (onUpdate) onUpdate()
+
+      await refreshCardData()
+
+      // Chamar onUpdate para atualizar o dashboard principal
+      if (onUpdate) {
+        console.log("🔄 Chamando onUpdate após adicionar transação")
+        onUpdate()
+      }
     } catch (error) {
-      console.error("Erro ao adicionar transação:", error)
-      alert("Erro ao adicionar transação.")
+      console.error("❌ Erro ao adicionar transação:", error)
+      alert("Erro ao adicionar transação: " + error.message)
     }
   }
 

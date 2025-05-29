@@ -45,9 +45,13 @@ export async function checkSavingsTablesExist() {
 // Função para verificar se as tabelas de cartão existem
 export async function checkCardTablesExist() {
   try {
+    console.log("🔍 Verificando se tabelas de cartão existem...")
     const { error } = await supabase.from("credit_cards").select("id").limit(1)
-    return !error
-  } catch {
+    const exists = !error
+    console.log("📊 Resultado da verificação de tabelas:", { error: error?.message, exists })
+    return exists
+  } catch (error) {
+    console.error("❌ Erro ao verificar tabelas de cartão:", error)
     return false
   }
 }
@@ -517,8 +521,13 @@ export async function deleteCreditCard(id: string) {
 // Transações de cartão
 export async function getCardTransactions(month?: number, year?: number) {
   try {
+    console.log("🔍 getCardTransactions chamada com:", { month, year })
+
     const tableExists = await checkCardTablesExist()
+    console.log("📊 Tabelas de cartão existem:", tableExists)
+
     if (!tableExists) {
+      console.log("⚠️ Tabelas de cartão não existem - retornando array vazio")
       return []
     }
 
@@ -528,20 +537,45 @@ export async function getCardTransactions(month?: number, year?: number) {
     `)
 
     if (month && year) {
-      query = query
-        .gte("date", `${year}-${month.toString().padStart(2, "0")}-01`)
-        .lt("date", `${year}-${(month + 1).toString().padStart(2, "0")}-01`)
+      // Corrigir o cálculo do próximo mês
+      let nextMonth = month + 1
+      let nextYear = year
+
+      if (nextMonth > 12) {
+        nextMonth = 1
+        nextYear++
+      }
+
+      const startDate = `${year}-${month.toString().padStart(2, "0")}-01`
+      const endDate = `${nextYear}-${nextMonth.toString().padStart(2, "0")}-01`
+      console.log("📅 Filtrando por período:", { startDate, endDate })
+
+      query = query.gte("date", startDate).lt("date", endDate)
     }
 
     const { data, error } = await query.order("date", { ascending: false })
 
     if (error) {
-      console.error("Erro ao buscar transações de cartão:", error)
+      console.error("❌ Erro na query de transações de cartão:", error)
       return []
     }
+
+    console.log("✅ Transações de cartão carregadas:", data?.length || 0, data)
+
+    // Se não encontrou nada com filtro, vamos tentar sem filtro para debug
+    if ((!data || data.length === 0) && month && year) {
+      console.log("🔍 Tentando buscar TODAS as transações para debug...")
+      const { data: allData, error: allError } = await supabase
+        .from("card_transactions")
+        .select(`*, card:credit_cards(*)`)
+        .order("date", { ascending: false })
+
+      console.log("📊 Todas as transações encontradas:", allData?.length || 0, allData)
+    }
+
     return data as CardTransaction[]
   } catch (error) {
-    console.error("Erro na conexão:", error)
+    console.error("❌ Erro na conexão getCardTransactions:", error)
     return []
   }
 }

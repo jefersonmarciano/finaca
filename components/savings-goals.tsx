@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
-import { Target, Check, X } from "lucide-react"
+import { Target, Check, X, Edit, Trash2 } from "lucide-react"
 
 interface SavingsGoal {
   id: string
@@ -16,6 +16,7 @@ interface SavingsGoal {
   currentAmount: number
   deadline: string
   description?: string
+  created_at?: string
 }
 
 interface SavingsGoalsProps {
@@ -23,24 +24,7 @@ interface SavingsGoalsProps {
 }
 
 export function SavingsGoals({ totalAccumulated }: SavingsGoalsProps) {
-  const [goals, setGoals] = useState<SavingsGoal[]>([
-    {
-      id: "1",
-      title: "Reserva de Emergência",
-      targetAmount: 15000,
-      currentAmount: totalAccumulated,
-      deadline: "2024-12-31",
-      description: "6 meses de gastos essenciais",
-    },
-    {
-      id: "2",
-      title: "Investimento",
-      targetAmount: 25000,
-      currentAmount: totalAccumulated,
-      deadline: "2025-06-30",
-      description: "Capital para investimentos",
-    },
-  ])
+  const [goals, setGoals] = useState<SavingsGoal[]>([])
 
   const [newGoal, setNewGoal] = useState({
     title: "",
@@ -50,20 +34,110 @@ export function SavingsGoals({ totalAccumulated }: SavingsGoalsProps) {
   })
 
   const [editingGoal, setEditingGoal] = useState<string | null>(null)
+  const [editingGoalData, setEditingGoalData] = useState({
+    title: "",
+    targetAmount: "",
+    deadline: "",
+    description: "",
+  })
+
   const [showNewGoalForm, setShowNewGoalForm] = useState(false)
 
-  // Atualizar currentAmount quando totalAccumulated mudar
+  // Helper functions for localStorage
+  const saveGoalsToStorage = (goalsToSave: SavingsGoal[]) => {
+    try {
+      localStorage.setItem("savings_goals", JSON.stringify(goalsToSave))
+    } catch (error) {
+      console.error("Erro ao salvar metas no localStorage:", error)
+    }
+  }
+
+  const loadGoalsFromStorage = (): SavingsGoal[] => {
+    try {
+      const stored = localStorage.getItem("savings_goals")
+      if (stored) {
+        return JSON.parse(stored)
+      }
+    } catch (error) {
+      console.error("Erro ao carregar metas do localStorage:", error)
+    }
+    return []
+  }
+
+  // Load goals from localStorage on component mount
   useEffect(() => {
-    setGoals((prevGoals) =>
-      prevGoals.map((goal) => ({
+    const loadedGoals = loadGoalsFromStorage()
+    // Update current amount for all goals
+    const updatedGoals = loadedGoals.map((goal) => ({
+      ...goal,
+      currentAmount: totalAccumulated,
+    }))
+    setGoals(updatedGoals)
+  }, [])
+
+  // Update currentAmount when totalAccumulated changes
+  useEffect(() => {
+    setGoals((prevGoals) => {
+      const updatedGoals = prevGoals.map((goal) => ({
         ...goal,
         currentAmount: totalAccumulated,
-      })),
-    )
+      }))
+      saveGoalsToStorage(updatedGoals)
+      return updatedGoals
+    })
   }, [totalAccumulated])
 
+  const handleEditGoal = (goal: SavingsGoal) => {
+    setEditingGoal(goal.id)
+    setEditingGoalData({
+      title: goal.title,
+      targetAmount: goal.targetAmount.toString(),
+      deadline: goal.deadline,
+      description: goal.description || "",
+    })
+  }
+
+  const handleSaveEditGoal = () => {
+    if (!editingGoal || !editingGoalData.title || !editingGoalData.targetAmount || !editingGoalData.deadline) return
+
+    const updatedGoals = goals.map((goal) =>
+      goal.id === editingGoal
+        ? {
+            ...goal,
+            title: editingGoalData.title,
+            targetAmount: Number.parseFloat(editingGoalData.targetAmount),
+            deadline: editingGoalData.deadline,
+            description: editingGoalData.description,
+          }
+        : goal,
+    )
+
+    setGoals(updatedGoals)
+    saveGoalsToStorage(updatedGoals)
+
+    // Reset editing state
+    setEditingGoal(null)
+    setEditingGoalData({
+      title: "",
+      targetAmount: "",
+      deadline: "",
+      description: "",
+    })
+  }
+
+  const handleDeleteGoal = (id: string) => {
+    if (!confirm("Deseja realmente excluir esta meta?")) return
+
+    const updatedGoals = goals.filter((goal) => goal.id !== id)
+    setGoals(updatedGoals)
+    saveGoalsToStorage(updatedGoals)
+  }
+
   const handleAddGoal = () => {
-    if (!newGoal.title || !newGoal.targetAmount || !newGoal.deadline) return
+    if (!newGoal.title || !newGoal.targetAmount || !newGoal.deadline) {
+      alert("Preencha todos os campos obrigatórios")
+      return
+    }
 
     const goal: SavingsGoal = {
       id: Date.now().toString(),
@@ -72,26 +146,19 @@ export function SavingsGoals({ totalAccumulated }: SavingsGoalsProps) {
       currentAmount: totalAccumulated,
       deadline: newGoal.deadline,
       description: newGoal.description,
+      created_at: new Date().toISOString(),
     }
 
-    setGoals([...goals, goal])
+    const updatedGoals = [...goals, goal]
+    setGoals(updatedGoals)
+    saveGoalsToStorage(updatedGoals)
+
     setNewGoal({ title: "", targetAmount: "", deadline: "", description: "" })
     setShowNewGoalForm(false)
   }
 
-  const handleDeleteGoal = (id: string) => {
-    setGoals(goals.filter((goal) => goal.id !== id))
-  }
-
   const getProgressPercentage = (current: number, target: number) => {
     return Math.min((current / target) * 100, 100)
-  }
-
-  const getProgressColor = (percentage: number) => {
-    if (percentage >= 100) return "bg-green-500"
-    if (percentage >= 75) return "bg-blue-500"
-    if (percentage >= 50) return "bg-yellow-500"
-    return "bg-red-500"
   }
 
   const getStatusBadge = (current: number, target: number, deadline: string) => {
@@ -188,6 +255,68 @@ export function SavingsGoals({ totalAccumulated }: SavingsGoalsProps) {
           </Card>
         )}
 
+        {/* Formulário para editar meta */}
+        {editingGoal && (
+          <Card className="bg-green-50 border-green-200">
+            <CardContent className="pt-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-goal-title">Título da Meta</Label>
+                  <Input
+                    id="edit-goal-title"
+                    placeholder="Ex: Reserva de Emergência"
+                    value={editingGoalData.title}
+                    onChange={(e) => setEditingGoalData((prev) => ({ ...prev, title: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-goal-amount">Valor Alvo (R$)</Label>
+                  <Input
+                    id="edit-goal-amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="0,00"
+                    value={editingGoalData.targetAmount}
+                    onChange={(e) => setEditingGoalData((prev) => ({ ...prev, targetAmount: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-goal-deadline">Prazo</Label>
+                  <Input
+                    id="edit-goal-deadline"
+                    type="date"
+                    value={editingGoalData.deadline}
+                    onChange={(e) => setEditingGoalData((prev) => ({ ...prev, deadline: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-goal-description">Descrição (opcional)</Label>
+                  <Input
+                    id="edit-goal-description"
+                    placeholder="Descrição da meta"
+                    value={editingGoalData.description}
+                    onChange={(e) => setEditingGoalData((prev) => ({ ...prev, description: e.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button onClick={handleSaveEditGoal} size="sm">
+                  <Check className="h-4 w-4 mr-1" />
+                  Atualizar Meta
+                </Button>
+                <Button variant="outline" onClick={() => setEditingGoal(null)} size="sm">
+                  <X className="h-4 w-4 mr-1" />
+                  Cancelar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Lista de metas */}
         <div className="space-y-4">
           {goals.map((goal) => {
@@ -207,14 +336,24 @@ export function SavingsGoals({ totalAccumulated }: SavingsGoalsProps) {
                       Prazo: {new Date(goal.deadline).toLocaleDateString("pt-BR")}
                     </p>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleDeleteGoal(goal.id)}
-                    className="text-red-600 hover:text-red-700"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleEditGoal(goal)}
+                      className="text-blue-600 hover:text-blue-700 h-8 w-8 p-0"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDeleteGoal(goal.id)}
+                      className="text-red-600 hover:text-red-700 h-8 w-8 p-0"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
