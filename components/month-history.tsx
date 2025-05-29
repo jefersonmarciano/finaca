@@ -107,26 +107,28 @@ export function MonthHistory({ currentMonth, currentYear, onUpdate }: MonthHisto
           <Calendar className="h-5 w-5" />
           Histórico Mensal
         </CardTitle>
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
           <Button
             variant="outline"
             size="sm"
             onClick={handleArchiveMonth}
             disabled={isArchiving}
-            className="flex items-center gap-1"
+            className="flex items-center justify-center gap-1 text-xs sm:text-sm px-2 sm:px-3"
           >
             <Archive className="h-4 w-4" />
-            {isArchiving ? "Arquivando..." : "Arquivar Mês Atual"}
+            <span className="hidden sm:inline">{isArchiving ? "Arquivando..." : "Arquivar Mês Atual"}</span>
+            <span className="sm:hidden">{isArchiving ? "Arquivando..." : "Arquivar"}</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={handlePrepareNextMonth}
             disabled={isPreparing}
-            className="flex items-center gap-1"
+            className="flex items-center justify-center gap-1 text-xs sm:text-sm px-2 sm:px-3"
           >
             <RefreshCw className="h-4 w-4" />
-            {isPreparing ? "Preparando..." : "Preparar Próximo Mês"}
+            <span className="hidden sm:inline">{isPreparing ? "Preparando..." : "Preparar Próximo Mês"}</span>
+            <span className="sm:hidden">{isPreparing ? "Preparando..." : "Preparar"}</span>
           </Button>
         </div>
       </CardHeader>
