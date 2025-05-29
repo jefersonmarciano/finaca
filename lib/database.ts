@@ -6,6 +6,10 @@ import type {
   MonthlySummary,
   MonthlySavings,
   TotalSavings,
+  CreditCard,
+  CardTransaction,
+  CardInstallment,
+  CardSummary,
 } from "@/types/financial"
 
 // Função para verificar se as tabelas existem
@@ -32,6 +36,16 @@ export async function checkHistoryTablesExist() {
 export async function checkSavingsTablesExist() {
   try {
     const { error } = await supabase.from("monthly_savings").select("id").limit(1)
+    return !error
+  } catch {
+    return false
+  }
+}
+
+// Função para verificar se as tabelas de cartão existem
+export async function checkCardTablesExist() {
+  try {
+    const { error } = await supabase.from("credit_cards").select("id").limit(1)
     return !error
   } catch {
     return false
@@ -439,5 +453,270 @@ export async function prepareNextMonth(currentMonth: number, currentYear: number
   } catch (error) {
     console.error("Erro ao preparar próximo mês:", error)
     throw error
+  }
+}
+
+// ==================== FUNÇÕES DE CARTÃO DE CRÉDITO ====================
+
+// Cartões de crédito
+export async function getCreditCards() {
+  try {
+    const tableExists = await checkCardTablesExist()
+    if (!tableExists) {
+      console.log("Tabelas de cartão não existem ainda")
+      return []
+    }
+
+    const { data, error } = await supabase.from("credit_cards").select("*").order("name", { ascending: true })
+
+    if (error) {
+      console.error("Erro ao buscar cartões:", error)
+      return []
+    }
+    return data as CreditCard[]
+  } catch (error) {
+    console.error("Erro na conexão:", error)
+    return []
+  }
+}
+
+export async function addCreditCard(card: Omit<CreditCard, "id" | "created_at">) {
+  try {
+    const { data, error } = await supabase.from("credit_cards").insert([card]).select().single()
+
+    if (error) throw error
+    return data as CreditCard
+  } catch (error) {
+    console.error("Erro ao adicionar cartão:", error)
+    throw error
+  }
+}
+
+export async function updateCreditCard(id: string, card: Partial<Omit<CreditCard, "id" | "created_at">>) {
+  try {
+    const { data, error } = await supabase.from("credit_cards").update(card).eq("id", id).select().single()
+
+    if (error) throw error
+    return data as CreditCard
+  } catch (error) {
+    console.error("Erro ao atualizar cartão:", error)
+    throw error
+  }
+}
+
+export async function deleteCreditCard(id: string) {
+  try {
+    const { error } = await supabase.from("credit_cards").delete().eq("id", id)
+    if (error) throw error
+  } catch (error) {
+    console.error("Erro ao deletar cartão:", error)
+    throw error
+  }
+}
+
+// Transações de cartão
+export async function getCardTransactions(month?: number, year?: number) {
+  try {
+    const tableExists = await checkCardTablesExist()
+    if (!tableExists) {
+      return []
+    }
+
+    let query = supabase.from("card_transactions").select(`
+      *,
+      card:credit_cards(*)
+    `)
+
+    if (month && year) {
+      query = query
+        .gte("date", `${year}-${month.toString().padStart(2, "0")}-01`)
+        .lt("date", `${year}-${(month + 1).toString().padStart(2, "0")}-01`)
+    }
+
+    const { data, error } = await query.order("date", { ascending: false })
+
+    if (error) {
+      console.error("Erro ao buscar transações de cartão:", error)
+      return []
+    }
+    return data as CardTransaction[]
+  } catch (error) {
+    console.error("Erro na conexão:", error)
+    return []
+  }
+}
+
+export async function addCardTransaction(transaction: Omit<CardTransaction, "id" | "created_at" | "card">) {
+  try {
+    const { data, error } = await supabase.from("card_transactions").insert([transaction]).select().single()
+
+    if (error) throw error
+
+    // Criar parcelas se for parcelado
+    if (transaction.installments > 1) {
+      await createInstallments(data.id, transaction.amount, transaction.installments, transaction.date)
+    }
+
+    return data as CardTransaction
+  } catch (error) {
+    console.error("Erro ao adicionar transação de cartão:", error)
+    throw error
+  }
+}
+
+export async function deleteCardTransaction(id: string) {
+  try {
+    // Deletar parcelas primeiro
+    await supabase.from("card_installments").delete().eq("card_transaction_id", id)
+
+    // Deletar transação
+    const { error } = await supabase.from("card_transactions").delete().eq("id", id)
+    if (error) throw error
+  } catch (error) {
+    console.error("Erro ao deletar transação de cartão:", error)
+    throw error
+  }
+}
+
+// Parcelas
+async function createInstallments(transactionId: string, totalAmount: number, installments: number, firstDate: string) {
+  try {
+    const installmentAmount = totalAmount / installments
+    const installmentsData = []
+
+    for (let i = 1; i <= installments; i++) {
+      const dueDate = new Date(firstDate)
+      dueDate.setMonth(dueDate.getMonth() + i - 1)
+
+      installmentsData.push({
+        card_transaction_id: transactionId,
+        installment_number: i,
+        amount: installmentAmount,
+        due_date: dueDate.toISOString().split("T")[0],
+        paid: false,
+      })
+    }
+
+    const { error } = await supabase.from("card_installments").insert(installmentsData)
+    if (error) throw error
+  } catch (error) {
+    console.error("Erro ao criar parcelas:", error)
+    throw error
+  }
+}
+
+export async function getCardInstallments(cardId?: string, month?: number, year?: number) {
+  try {
+    const tableExists = await checkCardTablesExist()
+    if (!tableExists) {
+      return []
+    }
+
+    let query = supabase.from("card_installments").select(`
+      *,
+      transaction:card_transactions(
+        *,
+        card:credit_cards(*)
+      )
+    `)
+
+    if (month && year) {
+      query = query
+        .gte("due_date", `${year}-${month.toString().padStart(2, "0")}-01`)
+        .lt("due_date", `${year}-${(month + 1).toString().padStart(2, "0")}-01`)
+    }
+
+    const { data, error } = await query.order("due_date", { ascending: true })
+
+    if (error) {
+      console.error("Erro ao buscar parcelas:", error)
+      return []
+    }
+
+    let result = data as CardInstallment[]
+
+    // Filtrar por cartão se especificado
+    if (cardId) {
+      result = result.filter((installment) => installment.transaction?.card_id === cardId)
+    }
+
+    return result
+  } catch (error) {
+    console.error("Erro na conexão:", error)
+    return []
+  }
+}
+
+export async function updateInstallmentPaid(id: string, paid: boolean) {
+  try {
+    const { error } = await supabase.from("card_installments").update({ paid }).eq("id", id)
+    if (error) throw error
+  } catch (error) {
+    console.error("Erro ao atualizar parcela:", error)
+    throw error
+  }
+}
+
+// Resumo dos cartões
+export async function getCardsSummary(): Promise<CardSummary[]> {
+  try {
+    const tableExists = await checkCardTablesExist()
+    if (!tableExists) {
+      return []
+    }
+
+    const cards = await getCreditCards()
+    const summaries: CardSummary[] = []
+
+    for (const card of cards) {
+      // Buscar parcelas não pagas
+      const { data: unpaidInstallments, error } = await supabase
+        .from("card_installments")
+        .select(`
+          *,
+          transaction:card_transactions!inner(card_id)
+        `)
+        .eq("transaction.card_id", card.id)
+        .eq("paid", false)
+
+      if (error) {
+        console.error("Erro ao buscar parcelas não pagas:", error)
+        continue
+      }
+
+      const currentBalance = unpaidInstallments?.reduce((sum, installment) => sum + installment.amount, 0) || 0
+      const availableLimit = card.credit_limit - currentBalance
+
+      // Próximo vencimento
+      const nextInstallment = unpaidInstallments
+        ?.sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime())
+        .find((installment) => new Date(installment.due_date) >= new Date())
+
+      const nextDueDate = nextInstallment?.due_date || ""
+      const nextDueAmount =
+        unpaidInstallments
+          ?.filter((installment) => installment.due_date === nextDueDate)
+          .reduce((sum, installment) => sum + installment.amount, 0) || 0
+
+      // Contar transações
+      const { count } = await supabase
+        .from("card_transactions")
+        .select("*", { count: "exact", head: true })
+        .eq("card_id", card.id)
+
+      summaries.push({
+        card,
+        current_balance: currentBalance,
+        available_limit: availableLimit,
+        next_due_date: nextDueDate,
+        next_due_amount: nextDueAmount,
+        transactions_count: count || 0,
+      })
+    }
+
+    return summaries
+  } catch (error) {
+    console.error("Erro ao gerar resumo dos cartões:", error)
+    return []
   }
 }

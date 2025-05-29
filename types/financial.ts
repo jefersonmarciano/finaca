@@ -56,3 +56,46 @@ export interface TotalSavings {
   months_count: number
   last_update: string
 }
+
+// Novos tipos para cartões de crédito
+export interface CreditCard {
+  id: string
+  name: string
+  credit_limit: number
+  closing_day: number
+  due_day: number
+  created_at?: string
+}
+
+export interface CardTransaction {
+  id: string
+  card_id: string
+  description: string
+  amount: number
+  installments: number
+  current_installment: number
+  date: string
+  category: string
+  created_at?: string
+  card?: CreditCard
+}
+
+export interface CardInstallment {
+  id: string
+  card_transaction_id: string
+  installment_number: number
+  amount: number
+  due_date: string
+  paid: boolean
+  created_at?: string
+  transaction?: CardTransaction
+}
+
+export interface CardSummary {
+  card: CreditCard
+  current_balance: number
+  available_limit: number
+  next_due_date: string
+  next_due_amount: number
+  transactions_count: number
+}

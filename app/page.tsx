@@ -12,6 +12,7 @@ import { AlertsPanel } from "@/components/alerts-panel"
 import { MonthHistory } from "@/components/month-history"
 import { MonthSelector } from "@/components/month-selector"
 import { SavingsTracker } from "@/components/savings-tracker"
+import { CreditCardManager } from "@/components/credit-card-manager"
 import {
   getTransactions,
   getMonthlySettings,
@@ -165,10 +166,11 @@ export default function FinancialControl() {
 
         {/* Tabs principais */}
         <Tabs defaultValue="dashboard" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="transactions">Transações</TabsTrigger>
             <TabsTrigger value="savings">Reservas</TabsTrigger>
+            <TabsTrigger value="cards">Cartões</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-4">
@@ -250,6 +252,10 @@ export default function FinancialControl() {
 
           <TabsContent value="savings" className="space-y-4">
             <SavingsTracker currentMonth={currentMonth} currentYear={currentYear} onUpdate={loadData} />
+          </TabsContent>
+
+          <TabsContent value="cards" className="space-y-4">
+            <CreditCardManager currentMonth={currentMonth} currentYear={currentYear} onUpdate={loadData} />
           </TabsContent>
         </Tabs>
       </div>
