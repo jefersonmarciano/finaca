@@ -23,6 +23,7 @@ import {
   checkCardTablesExist,
 } from "@/lib/database"
 import type { Transaction, MonthlySettings, ExtraIncome } from "@/types/financial"
+import { HistoryDashboard } from "@/components/history-dashboard"
 
 export default function FinancialControl() {
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1)
@@ -187,11 +188,12 @@ export default function FinancialControl() {
 
         {/* Tabs principais */}
         <Tabs defaultValue="dashboard" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
             <TabsTrigger value="transactions">Transações</TabsTrigger>
             <TabsTrigger value="savings">Reservas</TabsTrigger>
             <TabsTrigger value="cards">Cartões</TabsTrigger>
+            <TabsTrigger value="history">Histórico</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-4">
@@ -324,6 +326,10 @@ export default function FinancialControl() {
                 loadData()
               }}
             />
+          </TabsContent>
+
+          <TabsContent value="history" className="space-y-4">
+            <HistoryDashboard currentMonth={currentMonth} currentYear={currentYear} onUpdate={loadData} />
           </TabsContent>
         </Tabs>
       </div>

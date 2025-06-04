@@ -178,13 +178,6 @@ export async function deleteExtraIncome(id: string) {
 // Histórico mensal
 export async function getMonthlySummaries() {
   try {
-    // Verificar se a tabela existe antes de consultar
-    const tableExists = await checkHistoryTablesExist()
-    if (!tableExists) {
-      console.log("Tabela de histórico não existe ainda")
-      return []
-    }
-
     const { data, error } = await supabase
       .from("monthly_summary")
       .select("*")
@@ -204,12 +197,6 @@ export async function getMonthlySummaries() {
 
 export async function getMonthlySummary(month: number, year: number) {
   try {
-    // Verificar se a tabela existe antes de consultar
-    const tableExists = await checkHistoryTablesExist()
-    if (!tableExists) {
-      return null
-    }
-
     const { data, error } = await supabase
       .from("monthly_summary")
       .select("*")
@@ -310,6 +297,83 @@ export async function deleteMonthlySaving(id: string) {
   }
 }
 
+// FUNÇÃO SIMPLIFICADA PARA SALVAR HISTÓRICO MENSAL
+export async function saveMonthlySummary(summary: Omit<MonthlySummary, "id" | "created_at">) {
+  try {
+    console.log("💾 Salvando histórico mensal:", summary)
+
+    // Verificar se já existe um registro para este mês/ano
+    const { data: existing } = await supabase
+      .from("monthly_summary")
+      .select("id")
+      .eq("month", summary.month)
+      .eq("year", summary.year)
+      .single()
+
+    if (existing) {
+      // Atualizar registro existente
+      const { data, error } = await supabase
+        .from("monthly_summary")
+        .update(summary)
+        .eq("id", existing.id)
+        .select()
+        .single()
+
+      if (error) throw error
+      console.log("✅ Histórico atualizado:", data)
+      return data as MonthlySummary
+    } else {
+      // Criar novo registro
+      const { data, error } = await supabase.from("monthly_summary").insert([summary]).select().single()
+
+      if (error) throw error
+      console.log("✅ Histórico criado:", data)
+      return data as MonthlySummary
+    }
+  } catch (error) {
+    console.error("❌ Erro ao salvar histórico mensal:", error)
+    throw error
+  }
+}
+
+// FUNÇÃO SIMPLIFICADA PARA DELETAR HISTÓRICO MENSAL
+export async function deleteMonthlySummary(id: string) {
+  try {
+    console.log("🗑️ Deletando histórico com ID:", id)
+
+    const { error } = await supabase.from("monthly_summary").delete().eq("id", id)
+
+    if (error) {
+      console.error("❌ Erro ao deletar:", error)
+      throw error
+    }
+
+    console.log("✅ Histórico deletado com sucesso!")
+  } catch (error) {
+    console.error("❌ Erro ao deletar histórico:", error)
+    throw error
+  }
+}
+
+// FUNÇÃO PARA DELETAR TODOS OS HISTÓRICOS (ZERAR BANCO)
+export async function deleteAllMonthlySummaries() {
+  try {
+    console.log("🗑️ Deletando TODOS os históricos...")
+
+    const { error } = await supabase.from("monthly_summary").delete().neq("id", "00000000-0000-0000-0000-000000000000")
+
+    if (error) {
+      console.error("❌ Erro ao deletar todos os históricos:", error)
+      throw error
+    }
+
+    console.log("✅ Todos os históricos deletados!")
+  } catch (error) {
+    console.error("❌ Erro ao deletar todos os históricos:", error)
+    throw error
+  }
+}
+
 export async function getTotalSavings() {
   try {
     // Verificar se a tabela existe antes de consultar
@@ -331,24 +395,43 @@ export async function getTotalSavings() {
   }
 }
 
-// Arquivar mês atual
+// Arquivar mês atual - FUNÇÃO SIMPLIFICADA
 export async function archiveCurrentMonth(month: number, year: number) {
   try {
-    // Verificar se as tabelas de histórico existem
-    const tableExists = await checkHistoryTablesExist()
-    if (!tableExists) {
-      throw new Error("Tabelas de histórico não existem. Execute o script SQL primeiro.")
+    console.log("📦 Arquivando mês:", { month, year })
+
+    // Buscar dados do mês
+    const [transactions, extraIncome, settings] = await Promise.all([
+      getTransactions(month, year),
+      getExtraIncome(month, year),
+      getMonthlySettings(month, year),
+    ])
+
+    // Calcular totais
+    const totalReceitas = transactions.filter((t) => t.type === "receita").reduce((sum, t) => sum + t.amount, 0)
+    const totalGastos = transactions.filter((t) => t.type === "gasto").reduce((sum, t) => sum + t.amount, 0)
+    const totalExtras = extraIncome.reduce((sum, e) => sum + e.amount, 0)
+    const dasValue = settings?.das_value || 67
+    const irMensal = totalReceitas * 0.045
+    const saldoMensal = totalReceitas + totalExtras - totalGastos - dasValue - irMensal
+
+    // Salvar no histórico
+    const summary = {
+      month,
+      year,
+      total_receitas: totalReceitas,
+      total_gastos: totalGastos,
+      total_extras: totalExtras,
+      das_value: dasValue,
+      ir_mensal: irMensal,
+      saldo_mensal: saldoMensal,
     }
 
-    const { data, error } = await supabase.rpc("archive_month_data", {
-      target_month: month,
-      target_year: year,
-    })
-
-    if (error) throw error
+    await saveMonthlySummary(summary)
+    console.log("✅ Mês arquivado com sucesso!")
     return true
   } catch (error) {
-    console.error("Erro ao arquivar mês:", error)
+    console.error("❌ Erro ao arquivar mês:", error)
     throw error
   }
 }
