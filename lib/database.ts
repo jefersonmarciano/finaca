@@ -412,8 +412,7 @@ export async function archiveCurrentMonth(month: number, year: number) {
     const totalGastos = transactions.filter((t) => t.type === "gasto").reduce((sum, t) => sum + t.amount, 0)
     const totalExtras = extraIncome.reduce((sum, e) => sum + e.amount, 0)
     const dasValue = settings?.das_value || 67
-    const irMensal = totalReceitas * 0.045
-    const saldoMensal = totalReceitas + totalExtras - totalGastos - dasValue - irMensal
+    const saldoMensal = totalReceitas + totalExtras - totalGastos - dasValue
 
     // Salvar no histórico
     const summary = {
@@ -423,7 +422,7 @@ export async function archiveCurrentMonth(month: number, year: number) {
       total_gastos: totalGastos,
       total_extras: totalExtras,
       das_value: dasValue,
-      ir_mensal: irMensal,
+      ir_mensal: 0,
       saldo_mensal: saldoMensal,
     }
 
